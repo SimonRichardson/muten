@@ -14,7 +14,7 @@
 
 #define MUT_SIGNATURE "MUTEN:1.0:"
 
-/* MUT.DEBUG Key
+/* MUT.DEBUG key
 */
 int MUTDebugCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
   if (argc != 2) {
@@ -25,29 +25,25 @@ int MUTDebugCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
   RedisModuleKey *key = RedisModule_OpenKey(ctx, argv[1], REDISMODULE_READ);
 
   /* Verify that the key is empty or a string. */
-  int keyType = RedisModule_KeyType(key);
-  if (keyType == REDISMODULE_KEYTYPE_EMPTY) {
+  if (RedisModule_KeyType(key) != REDISMODULE_KEYTYPE_EMPTY) {
     RedisModule_ReplyWithNull(ctx);
-    return REDISMODULE_ERR;
-  }
-  if (keyType != REDISMODULE_KEYTYPE_STRING) {
-    RedisModule_ReplyWithError(ctx, REDISMODULE_ERRORMSG_WRONGTYPE);
-    return REDISMODULE_ERR;
+    return REDISMODULE_OK;
   }
 
-  RedisModule_ReplyWithSimpleString(ctx, "Hello");
-
+  RedisModule_ReplyWithSimpleString(ctx, "PASS");
   return REDISMODULE_OK;
 }
 
 int RedisModule_OnLoad(RedisModuleCtx *ctx) {
   if (RedisModule_Init(ctx, RM_MODULE_NAME, 1, REDISMODULE_APIVER_1) ==
-      REDISMODULE_ERR)
+      REDISMODULE_ERR) {
     return REDISMODULE_ERR;
+  }
 
   if (RedisModule_CreateCommand(ctx, "mut.debug", MUTDebugCommand, "readonly",
-                                2, 2, 1) == REDISMODULE_ERR)
+                                1, 1, 1) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
+  }
 
   return REDISMODULE_OK;
 }
