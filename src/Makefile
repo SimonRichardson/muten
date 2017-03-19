@@ -1,10 +1,14 @@
 #set environment variable RM_INCLUDE_DIR to the location of redismodule.h
 ifndef RM_INCLUDE_DIR
-	RM_INCLUDE_DIR=../
+	RM_INCLUDE_DIR=../deps
 endif
 
 ifndef RMUTIL_LIBDIR
-	RMUTIL_LIBDIR=../rmutil
+	RMUTIL_LIBDIR=$(RM_INCLUDE_DIR)/rmutil
+endif
+
+ifndef RMLOGGING_LIBDIR
+	RMLOGGING_LIBDIR=$(RM_INCLUDE_DIR)/logging
 endif
 
 # find the OS
@@ -18,16 +22,20 @@ else
 	SHOBJ_CFLAGS ?= -dynamic -fno-common -g -ggdb
 	SHOBJ_LDFLAGS ?= -bundle -undefined dynamic_lookup
 endif
-CFLAGS = -I$(RM_INCLUDE_DIR) -Wall -g -fPIC -lc -lm -Og -std=gnu99
+
+CFLAGS = -I$(RM_INCLUDE_DIR) -Wall -g -fPIC -lc -lm -O2 -std=gnu99
 CC=gcc
 
-all: rmutil muten.so
+all: rmutil logging muten.so
 
 rmutil: FORCE
 	$(MAKE) -C $(RMUTIL_LIBDIR)
 
+logging: FORCE
+	$(MAKE) -C $(RMLOGGING_LIBDIR)
+
 muten.so: muten.o
-	$(LD) -o $@ muten.o $(SHOBJ_LDFLAGS) $(LIBS) -L$(RMUTIL_LIBDIR) -lrmutil -lc
+	$(LD) -o $@ muten.o $(SHOBJ_LDFLAGS) $(LIBS) -L$(RMUTIL_LIBDIR) -L$(RMLOGGING_LIBDIR) -lrmutil -lc
 
 clean:
 	rm -rf *.xo *.so *.o
