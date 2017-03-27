@@ -1,6 +1,8 @@
 #ifndef __MUTEN_H__
 #define __MUTEN_H__
 
+#include "../deps/redismodule.h"
+
 #define MUTEN_OK 0
 #define MUTEN_ERR 1
 
@@ -9,6 +11,6 @@
 
 #define MUTEN_SEPARATOR = ","
 
-int Muten_Command(char *insertion, char *deletion);
+int Muten_Validate(char *str, long long score, const char *txn);
 
 #endif

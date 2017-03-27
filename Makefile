@@ -19,12 +19,16 @@ ifndef TEST_DIR
 	TEST_DIR=./test
 endif
 
+.PHONY: default
+default:
+	@echo "Explicit target required"
+
 all: muten.so
 
 .PHONY: test
 test: muten.so
 	$(MAKE) -C $(TEST_DIR) ${RUN}
-	./test/muten_test
+	@(sh -c ./test/muten_test)
 
 muten.so:
 	$(MAKE) -C $(SRC_DIR)

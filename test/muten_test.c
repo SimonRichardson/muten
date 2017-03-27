@@ -3,10 +3,11 @@
 
 #include "../src/muten.h"
 #include "../deps/logging/logging.h"
+#include "../deps/redismodule.h"
 #include "minunit.h"
 
 MU_TEST(insert_ok) {
-    int res = Muten_Command(MUTEN_INSERT_SUFFIX, MUTEN_DELETE_SUFFIX);
+    int res = Muten_Validate("", 0, "xyz");
     mu_check(res == MUTEN_OK);
 }
 
