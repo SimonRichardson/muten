@@ -1,0 +1,16 @@
+language: c
+
+services:
+  - redos
+
+sudo: false
+
+script:
+  - make clean test
+  - ./test/muten_test
+  - ./test/test.sh
+
+notifications:
+  email:
+    recipients:
+      - simon@dice.fm
