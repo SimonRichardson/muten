@@ -21,9 +21,7 @@ int Muten_Validate(char *str, long long score, const char *txn) {
   return MUTEN_OK;
 }
 
-/* MUTEN.INSERT key field score txn data
-*/
-int MutenInsertCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+int Muten_Command(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, const char *isuffix, const char *rsuffix) {
   if (argc != 5) {
     return RedisModule_WrongArity(ctx);
   }
@@ -35,11 +33,11 @@ int MutenInsertCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
 
   sds ikey = sdsempty();
   ikey = sdscat(ikey, skey);
-  ikey = sdscat(ikey, MUTEN_INSERT_SUFFIX);
+  ikey = sdscat(ikey, isuffix);
 
   sds dkey = sdsempty();
   dkey = sdscat(dkey, skey);
-  dkey = sdscat(dkey, MUTEN_DELETE_SUFFIX);
+  dkey = sdscat(dkey, rsuffix);
 
   RedisModuleString *isKey = RedisModule_CreateString(ctx, (const char *)ikey, sdslen(ikey));
   RedisModuleString *dsKey = RedisModule_CreateString(ctx, (const char *)dkey, sdslen(dkey));
@@ -53,7 +51,7 @@ int MutenInsertCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
   if ((RedisModule_KeyType(insertionKey) != REDISMODULE_KEYTYPE_EMPTY) &&
       (RedisModule_KeyType(insertionKey) != REDISMODULE_KEYTYPE_HASH)) {
     RedisModule_ReplyWithError(ctx, REDISMODULE_ERRORMSG_WRONGTYPE);
-    return REDISMODULE_ERR;
+    return MUTEN_ERR;
   }
 
   RedisModuleKey *deletionKey =
@@ -61,7 +59,7 @@ int MutenInsertCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
   if ((RedisModule_KeyType(deletionKey) != REDISMODULE_KEYTYPE_EMPTY) &&
       (RedisModule_KeyType(deletionKey) != REDISMODULE_KEYTYPE_HASH)) {
     RedisModule_ReplyWithError(ctx, REDISMODULE_ERRORMSG_WRONGTYPE);
-    return REDISMODULE_ERR;
+    return MUTEN_ERR;
   }
 
   // Get the values.
@@ -70,7 +68,7 @@ int MutenInsertCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
   long long score;
   if ((RedisModule_StringToLongLong(argv[2], &score) != REDISMODULE_OK) || (score < 1)) {
     RedisModule_ReplyWithError(ctx, "ERR invalid score");
-    return REDISMODULE_ERR;
+    return MUTEN_ERR;
   }
 
   size_t txnLen;
@@ -85,14 +83,14 @@ int MutenInsertCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
   RedisModuleString *insertion;
   err = RedisModule_HashGet(insertionKey, REDISMODULE_HASH_NONE, field, &insertion, NULL);
   if (err == REDISMODULE_ERR) {
-    return REDISMODULE_ERR;
+    return MUTEN_ERR;
   }
   if (insertion) {
     err = Muten_Validate((char *)insertion, score, txn);
     if (err != MUTEN_OK) {
       LG_DEBUG("Insertion value was invalid!");
       RedisModule_ReplyWithLongLong(ctx, -1);
-      return REDISMODULE_OK;
+      return MUTEN_OK;
     }
   }
 
@@ -100,14 +98,14 @@ int MutenInsertCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
   RedisModuleString *deletion;
   err = RedisModule_HashGet(deletionKey, REDISMODULE_HASH_NONE, field, &deletion, NULL);
   if (err == REDISMODULE_ERR) {
-    return REDISMODULE_ERR;
+    return MUTEN_ERR;
   }
   if (deletion) {
     err = Muten_Validate((char *)deletion, score, txn);
     if (err != MUTEN_OK) {
       LG_DEBUG("Deletion value was invalid!");
       RedisModule_ReplyWithLongLong(ctx, -1);
-      return REDISMODULE_OK;
+      return MUTEN_OK;
     }
   }
 
@@ -117,12 +115,23 @@ int MutenInsertCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
     LG_DEBUG("Removal of hash field.");
   } else if (RedisModule_CallReplyType(res) == REDISMODULE_REPLY_ERROR) {
     LG_WARN("Attempting to remove hash key failed.");
-    return REDISMODULE_ERR;
+    return MUTEN_ERR;
   }
 
   // Now the actual setting.
   int updated = RedisModule_HashSet(insertionKey, REDISMODULE_HASH_NONE, field, data, NULL);
   RedisModule_ReplyWithLongLong(ctx, (long long)updated);
+
+  return MUTEN_OK;
+}
+
+/* MUTEN.INSERT key field score txn data
+*/
+int MutenInsertCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+  int res = Muten_Command(ctx, argv, argc, MUTEN_INSERT_SUFFIX, MUTEN_DELETE_SUFFIX);
+  if (res != MUTEN_OK) {
+    return REDISMODULE_ERR;
+  }
 
   return REDISMODULE_OK;
 }
@@ -130,17 +139,8 @@ int MutenInsertCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
 /* MUTEN.DELETE key field score txn data
 */
 int MutenDeleteCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
-  if (argc != 6) {
-    return RedisModule_WrongArity(ctx);
-  }
-  RedisModule_AutoMemory(ctx);
-
-    // Make sure that the value is a valid hash.
-  RedisModuleKey *key =
-      RedisModule_OpenKey(ctx, argv[1], REDISMODULE_READ | REDISMODULE_WRITE);
-  if ((RedisModule_KeyType(key) != REDISMODULE_KEYTYPE_EMPTY) &&
-      (RedisModule_KeyType(key) != REDISMODULE_KEYTYPE_HASH)) {
-    RedisModule_ReplyWithError(ctx, REDISMODULE_ERRORMSG_WRONGTYPE);
+  int res = Muten_Command(ctx, argv, argc, MUTEN_DELETE_SUFFIX, MUTEN_INSERT_SUFFIX);
+  if (res != MUTEN_OK) {
     return REDISMODULE_ERR;
   }
 
