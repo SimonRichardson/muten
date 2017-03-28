@@ -7,10 +7,6 @@ ifndef RMUTIL_LIBDIR
 	RMUTIL_LIBDIR=$(RM_INCLUDE_DIR)/rmutil
 endif
 
-ifndef RMLOGGING_LIBDIR
-	RMLOGGING_LIBDIR=$(RM_INCLUDE_DIR)/logging
-endif
-
 ifndef SRC_DIR
 	SRC_DIR=./src
 endif
@@ -39,6 +35,5 @@ clean: FORCE
 	rm -rf $(SRC_DIR)/*.xo $(SRC_DIR)/*.so $(SRC_DIR)/*.o
 	rm -rf $(TEST_DIR)/*.xo $(TEST_DIR)/*.so $(TEST_DIR)/*.o
 	rm -rf $(RMUTIL_LIBDIR)/*.so $(RMUTIL_LIBDIR)/*.o $(RMUTIL_LIBDIR)/*.a
-	rm -rf $(RMLOGGING_LIBDIR)/*.so $(RMLOGGING_LIBDIR)/*.o $(RMLOGGING_LIBDIR)/*.a
 
 FORCE:

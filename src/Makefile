@@ -7,10 +7,6 @@ ifndef RMUTIL_LIBDIR
 	RMUTIL_LIBDIR=$(RM_INCLUDE_DIR)/rmutil
 endif
 
-ifndef RMLOGGING_LIBDIR
-	RMLOGGING_LIBDIR=$(RM_INCLUDE_DIR)/logging
-endif
-
 # find the OS
 uname_S := $(shell sh -c 'uname -s 2>/dev/null || echo not')
 
@@ -26,16 +22,13 @@ endif
 CFLAGS = -I$(RM_INCLUDE_DIR) -Wall -g -fPIC -lc -lm -O2 -std=gnu99
 CC=gcc
 
-all: rmutil logging muten.so
+all: rmutil muten.so
 
 rmutil: FORCE
 	$(MAKE) -C $(RMUTIL_LIBDIR)
 
-logging: FORCE
-	$(MAKE) -C $(RMLOGGING_LIBDIR)
-
 muten.so: muten.o
-	$(LD) -o $@ muten.o $(SHOBJ_LDFLAGS) $(LIBS) -L$(RMUTIL_LIBDIR) -L$(RMLOGGING_LIBDIR) -lrmutil -lc
+	$(LD) -o $@ muten.o $(SHOBJ_LDFLAGS) $(LIBS) -L$(RMUTIL_LIBDIR) -lrmutil -lc
 
 clean:
 	rm -rf *.xo *.so *.o

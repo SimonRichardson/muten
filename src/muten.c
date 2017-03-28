@@ -6,8 +6,8 @@
 #include <stdio.h>
 #include <string.h>
 #include "../deps/redismodule.h"
-#include "../deps/logging/logging.h"
 #include "../deps/rmutil/sds.h"
+#include "../deps/rmutil/logging.h"
 #include "muten.h"
 
 #define RM_MODULE_NAME "muten"
@@ -72,7 +72,6 @@ int Muten_HashFieldData(muten_key *key, RedisModuleString *field, long long scor
 
   err = Muten_Validate((char *)data, score, txn);
   if (err != MUTEN_OK) {
-    LG_DEBUG("Field data value was invalid!");
     return MUTEN_INVALID_ERR;
   }
 
@@ -119,6 +118,7 @@ int Muten_Command(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, const
   err = Muten_HashFieldData(imKey, field, score, txn);
   if (err != MUTEN_OK) {
     if (err == MUTEN_INVALID_ERR) {
+      RM_LOG_DEBUG(ctx, "Field data value was invalid!");
       RedisModule_ReplyWithLongLong(ctx, -1);
       return MUTEN_OK;
     }
@@ -129,6 +129,7 @@ int Muten_Command(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, const
   err = Muten_HashFieldData(dmKey, field, score, txn);
   if (err != MUTEN_OK) {
     if (err == MUTEN_INVALID_ERR) {
+      RM_LOG_DEBUG(ctx, "Field data value was invalid!");
       RedisModule_ReplyWithLongLong(ctx, -1);
       return MUTEN_OK;
     }
@@ -138,9 +139,9 @@ int Muten_Command(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, const
   // We don't actually care about the result of this!
   RedisModuleCallReply *res = RedisModule_Call(ctx, "hdel", (char *)dmKey->rms, field);
   if (RedisModule_CallReplyType(res) == REDISMODULE_REPLY_INTEGER && RedisModule_CallReplyInteger(res) != 0) {
-    LG_DEBUG("Removal of hash field.");
+    RM_LOG_DEBUG(ctx, "Removal of hash field.");
   } else if (RedisModule_CallReplyType(res) == REDISMODULE_REPLY_ERROR) {
-    LG_WARN("Attempting to remove hash key failed.");
+    RM_LOG_WARNING(ctx, "Attempting to remove hash key failed.");
     return MUTEN_ERR;
   }
 
@@ -214,8 +215,7 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx) {
     return REDISMODULE_ERR;
   }
 
-  LOGGING_INIT(L_DEBUG);
-  LG_DEBUG("module loaded ok.");
+  RM_LOG_DEBUG(ctx, "module loaded ok.");
 
   return REDISMODULE_OK;
 }

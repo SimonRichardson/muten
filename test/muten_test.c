@@ -2,7 +2,6 @@
 #include <stdlib.h>
 
 #include "../src/muten.h"
-#include "../deps/logging/logging.h"
 #include "../deps/redismodule.h"
 #include "minunit.h"
 
@@ -16,9 +15,6 @@ MU_TEST_SUITE(test_suite) {
 }
 
 int main(int argc, char **argv) {
-    LOGGING_INIT(L_DEBUG);
-    LG_DEBUG("Testing muten...");
-
     MU_RUN_SUITE(test_suite);
     MU_REPORT();
 

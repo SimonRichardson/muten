@@ -5,10 +5,10 @@ then
     echo "Redis already running... attempting to run tests!"
 else
     echo "Starting Redis"
-    redis-server --loadmodule ../muten.so &
+    redis-server --loadmodule $(pwd)/muten.so &
     sleep 1
 fi
 
-redis-cli mut.debug "key"
+redis-cli muten.debug "key"
 
 pkill redis-server
