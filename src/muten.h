@@ -27,7 +27,7 @@
 #define MUTEN_INSERT_SUFFIX "+"
 #define MUTEN_DELETE_SUFFIX "-"
 
-#define MUTEN_SEPARATOR = ","
+#define MUTEN_SEPARATOR ","
 
 #define MUTEN_ERRORMSG_WRONGKEY "WRONGKEY Operation against a key holding the wrong kind of value"
 

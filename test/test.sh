@@ -9,6 +9,8 @@ else
     sleep 1
 fi
 
-redis-cli muten.debug "key"
+redis-cli muten.store.debug "58dbb63dffa724bcd65da73e" "58dbb6524c6adfbb8b583824"
+
+redis-cli muten.store.insert "58dbb63dffa724bcd65da73e" "58dbb6524c6adfbb8b583824" 1 "58dbb6524c6adfbb8b583824" "data"
 
 pkill redis-server

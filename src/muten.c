@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "../deps/redismodule.h"
+#include "../deps/rmutil/alloc.h"
 #include "../deps/rmutil/sds.h"
 #include "../deps/rmutil/logging.h"
 #include "muten.h"
@@ -77,7 +78,52 @@ muten_key *NewMutenKey(RedisModuleCtx *ctx, const char *key, const char *suffix)
   return key_new(rms, rmk);
 }
 
-int Muten_HashFieldData(muten_key *key, RedisModuleString *field, long long score, const char *txn) {
+struct muten_data_s {
+  long long score;
+  const char *txn;
+  const char *data;
+};
+
+typedef struct muten_data_s muten_data;
+
+muten_data *data_new(long long score, const char *txn, const char *data) {
+  muten_data *d;
+  if ((d = malloc(sizeof(muten_data))) == NULL) {
+    return NULL;
+  }
+
+  d->score = score;
+  d->txn = txn;
+  d->data = data;
+
+  return d;
+}
+
+muten_data *Muten_ParseHashFieldData(RedisModuleCtx *ctx, RedisModuleString *data) {
+  int tokcnt;
+  sds s = sdsempty();
+  s = sdscat(s, (const char *)data);
+
+  sds *toks = sdssplitlen(s, sdslen(s), MUTEN_SEPARATOR, 1, &tokcnt);
+
+  if (tokcnt != 3) {
+    return NULL;
+  }
+
+  RedisModuleString *sscore = RedisModule_CreateString(ctx, toks[0], sdslen(toks[0]));
+  if (!sscore) {
+    return NULL;
+  }
+
+  long long score;
+  if (RedisModule_StringToLongLong(sscore, &score) != REDISMODULE_OK) {
+    return NULL;
+  }
+
+  return data_new(score, toks[1], toks[2]);
+}
+
+int Muten_ValidHashFieldData(muten_key *key, RedisModuleString *field, long long score, const char *txn) {
   RedisModuleString *data;
   int err = RedisModule_HashGet(key->rmk, REDISMODULE_HASH_NONE, field, &data, NULL);
   if (err == REDISMODULE_ERR) {
@@ -96,7 +142,7 @@ int Muten_HashFieldData(muten_key *key, RedisModuleString *field, long long scor
 }
 
 int Muten_Command(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, const char *isuffix, const char *rsuffix) {
-  if (argc != 5) {
+  if (argc != 6) {
     return RedisModule_WrongArity(ctx);
   }
   RedisModule_AutoMemory(ctx);
@@ -118,7 +164,7 @@ int Muten_Command(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, const
   RedisModuleString *field = argv[2];
 
   long long score;
-  if ((RedisModule_StringToLongLong(argv[2], &score) != REDISMODULE_OK) || (score < 1)) {
+  if ((RedisModule_StringToLongLong(argv[3], &score) != REDISMODULE_OK) || (score < 1)) {
     RedisModule_ReplyWithError(ctx, "ERR invalid score");
     return MUTEN_ERR;
   }
@@ -132,7 +178,7 @@ int Muten_Command(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, const
   int err;
 
   // Get the value out of the hash for insertions.
-  err = Muten_HashFieldData(imKey, field, score, txn);
+  err = Muten_ValidHashFieldData(imKey, field, score, txn);
   if (err != MUTEN_OK) {
     if (err == MUTEN_INVALID_ERR) {
       RM_LOG_DEBUG(ctx, "Field data value was invalid!");
@@ -143,7 +189,7 @@ int Muten_Command(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, const
   }
 
   // Get the value out of the hash for deletions.
-  err = Muten_HashFieldData(dmKey, field, score, txn);
+  err = Muten_ValidHashFieldData(dmKey, field, score, txn);
   if (err != MUTEN_OK) {
     if (err == MUTEN_INVALID_ERR) {
       RM_LOG_DEBUG(ctx, "Field data value was invalid!");
@@ -166,12 +212,15 @@ int Muten_Command(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, const
   int updated = RedisModule_HashSet(imKey->rmk, REDISMODULE_HASH_NONE, field, data, NULL);
   RedisModule_ReplyWithLongLong(ctx, (long long)updated);
 
+  free(imKey);
+  free(dmKey);
+
   return MUTEN_OK;
 }
 
-/* MUTEN.INSERT key field score txn data
+/* MUTEN.STORE.INSERT key field score txn data
 */
-int MutenInsertCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+int MutenStoreInsertCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
   int res = Muten_Command(ctx, argv, argc, MUTEN_INSERT_SUFFIX, MUTEN_DELETE_SUFFIX);
   if (res != MUTEN_OK) {
     return REDISMODULE_ERR;
@@ -180,9 +229,9 @@ int MutenInsertCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
   return REDISMODULE_OK;
 }
 
-/* MUTEN.DELETE key field score txn data
+/* MUTEN.STORE.DELETE key field score txn data
 */
-int MutenDeleteCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+int MutenStoreDeleteCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
   int res = Muten_Command(ctx, argv, argc, MUTEN_DELETE_SUFFIX, MUTEN_INSERT_SUFFIX);
   if (res != MUTEN_OK) {
     return REDISMODULE_ERR;
@@ -191,43 +240,94 @@ int MutenDeleteCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
   return REDISMODULE_OK;
 }
 
-/* MUTEN.DEBUG key
+/* MUTEN.STORE.DEBUG key field
 */
-int MutenDebugCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
-  if (argc != 2) {
+int MutenStoreDebugCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+  if (argc != 3) {
     return RedisModule_WrongArity(ctx);
   }
   RedisModule_AutoMemory(ctx);
 
-  RedisModuleKey *key = RedisModule_OpenKey(ctx, argv[1], REDISMODULE_READ);
+  // Get the keys
+  size_t skeyLen;
+  const char *skey = RedisModule_StringPtrLen(argv[1], &skeyLen);
 
-  /* Verify that the key is empty or a string. */
-  if (RedisModule_KeyType(key) != REDISMODULE_KEYTYPE_EMPTY) {
-    RedisModule_ReplyWithNull(ctx);
-    return REDISMODULE_OK;
+  muten_key *imKey = NewMutenKey(ctx, skey, MUTEN_INSERT_SUFFIX);
+  if (!imKey) {
+    return REDISMODULE_ERR;
+  }
+  muten_key *dmKey = NewMutenKey(ctx, skey, MUTEN_DELETE_SUFFIX);
+  if (!dmKey) {
+    return REDISMODULE_ERR;
   }
 
-  RedisModule_ReplyWithSimpleString(ctx, "PASS");
+  // Get the values.
+  RedisModuleString *field = argv[2];
+
+  int err;
+
+  // Get the insertion.
+  RedisModuleString *idata;
+  err = RedisModule_HashGet(imKey->rmk, REDISMODULE_HASH_NONE, field, &idata, NULL);
+  if (err == REDISMODULE_ERR) {
+    return REDISMODULE_ERR;
+  }
+
+  // Get the deletion.
+  RedisModuleString *ddata;
+  err = RedisModule_HashGet(imKey->rmk, REDISMODULE_HASH_NONE, field, &ddata, NULL);
+  if (err == REDISMODULE_ERR) {
+    return REDISMODULE_ERR;
+  }
+
+  int replyArity = 6;
+  RedisModule_ReplyWithArray(ctx, replyArity);
+  if (!idata) {
+    for (int i = 0; i < replyArity/2; i++) {
+      RedisModule_ReplyWithNull(ctx);
+    }
+  } else {
+    muten_data *data = Muten_ParseHashFieldData(ctx, idata);
+    RedisModule_ReplyWithLongLong(ctx, data->score);
+    RedisModule_ReplyWithSimpleString(ctx, data->txn);
+    RedisModule_ReplyWithSimpleString(ctx, data->data);
+    free(data);
+  }
+
+  if (!ddata) {
+    for (int i = 0; i < replyArity/2; i++) {
+      RedisModule_ReplyWithNull(ctx);
+    }
+  } else {
+    muten_data *data = Muten_ParseHashFieldData(ctx, ddata);
+    RedisModule_ReplyWithLongLong(ctx, data->score);
+    RedisModule_ReplyWithSimpleString(ctx, data->txn);
+    RedisModule_ReplyWithSimpleString(ctx, data->data);
+    free(data);
+  }
+
   return REDISMODULE_OK;
 }
 
+/* Redis Module Bootstrap
+*/
 int RedisModule_OnLoad(RedisModuleCtx *ctx) {
   if (RedisModule_Init(ctx, RM_MODULE_NAME, 1, REDISMODULE_APIVER_1) ==
       REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
 
-  if (RedisModule_CreateCommand(ctx, "muten.insert", MutenInsertCommand, "write deny-oom",
-                                1, 2, 1) == REDISMODULE_ERR) {
+  if (RedisModule_CreateCommand(ctx, "muten.store.insert", MutenStoreInsertCommand, "write deny-oom",
+                                1, 1, 1) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
 
-  if (RedisModule_CreateCommand(ctx, "muten.delete", MutenDeleteCommand, "write deny-oom",
-                                1, 2, 1) == REDISMODULE_ERR) {
+  if (RedisModule_CreateCommand(ctx, "muten.store.delete", MutenStoreDeleteCommand, "write deny-oom",
+                                1, 1, 1) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
 
-  if (RedisModule_CreateCommand(ctx, "muten.debug", MutenDebugCommand, "readonly",
+  if (RedisModule_CreateCommand(ctx, "muten.store.debug", MutenStoreDebugCommand, "readonly",
                                 1, 1, 1) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
